@@ -1,60 +1,496 @@
-function doPost(e) {
-  try {
-    var data = JSON.parse(e.postData.contents);
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var action = data.action || "add";
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="语音记账">
+<meta name="theme-color" content="#0f1117">
+<meta name="mobile-web-app-capable" content="yes">
+<title>语音记账</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+:root{--bg:#0f1117;--card:#181a24;--border:#252836;--text:#e8eaf0;--muted:#6b7194;--accent:#6c8cff;--red:#ef4444;--green:#22c55e;--yellow:#eab308;--purple:#a855f7}
+body{background:var(--bg);color:var(--text);font-family:'Noto Sans SC',-apple-system,sans-serif;max-width:480px;margin:0 auto;min-height:100vh;min-height:100dvh;padding-bottom:150px;overscroll-behavior:none}
+.mono{font-family:'DM Mono',monospace}
 
-    if (action === "delete") {
-      // 删除：在对应sheet里找到ID匹配的行删掉
-      var sheetName = data.mode === "pokemon" ? "pokemon流水" : "claude流水";
-      var sheet = ss.getSheetByName(sheetName);
-      var rows = sheet.getDataRange().getValues();
-      for (var i = rows.length - 1; i >= 1; i--) {
-        if (rows[i][rows[i].length - 1] === data.id) {
-          sheet.deleteRow(i + 1);
-          break;
-        }
-      }
-      return ContentService.createTextOutput(JSON.stringify({status:"ok"})).setMimeType(ContentService.MimeType.JSON);
-    }
+.hdr{padding:calc(env(safe-area-inset-top,16px) + 8px) 20px 0;display:flex;align-items:center;justify-content:space-between}
+.hdr h1{font-size:21px;font-weight:700;letter-spacing:-.5px}
+.hdr .sub{font-size:12px;color:var(--muted);margin-top:2px}
+.hdr-btns{display:flex;gap:6px}
+.hdr-btns button{background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:7px 11px;font-size:13px;cursor:pointer;font-weight:500}
+.hdr-btns .dng{color:var(--red)}
 
-    if (action === "edit") {
-      var sheetName = data.mode === "pokemon" ? "pokemon流水" : "claude流水";
-      var sheet = ss.getSheetByName(sheetName);
-      var rows = sheet.getDataRange().getValues();
-      for (var i = rows.length - 1; i >= 1; i--) {
-        if (rows[i][rows[i].length - 1] === data.id) {
-          var date = new Date(data.timestamp);
-          var dateStr = Utilities.formatDate(date, "Asia/Tokyo", "yyyy/MM/dd HH:mm");
-          if (data.mode === "pokemon") {
-            var cost = data.cost || 0;
-            var sell = data.sell || 0;
-            sheet.getRange(i+1, 1, 1, 7).setValues([[dateStr, data.item, -cost, sell, sell-cost, data.note||"", data.id]]);
-          } else {
-            sheet.getRange(i+1, 1, 1, 6).setValues([[dateStr, data.item, data.category, -data.amount, data.note||"", data.id]]);
-          }
-          break;
-        }
-      }
-      return ContentService.createTextOutput(JSON.stringify({status:"ok"})).setMimeType(ContentService.MimeType.JSON);
-    }
+.mode-tabs{display:flex;margin:14px 20px 0;background:var(--card);border-radius:12px;padding:3px;border:1px solid var(--border)}
+.mode-tab{flex:1;padding:9px;text-align:center;border-radius:10px;font-size:13px;font-weight:500;cursor:pointer;transition:all .2s;color:var(--muted)}
+.mode-tab.on{background:var(--accent);color:#fff}
+.mode-tab.poke.on{background:var(--purple);color:#fff}
 
-    // action === "add"
-    var date = new Date(data.timestamp);
-    var dateStr = Utilities.formatDate(date, "Asia/Tokyo", "yyyy/MM/dd HH:mm");
+.stats{padding:14px 20px 0;display:flex;gap:10px}
+.sc{background:var(--card);border-radius:14px;padding:13px 15px;flex:1;min-width:0;border:1px solid var(--border)}
+.sc .lb{font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:3px}
+.sc .vl{font-size:17px;font-weight:700}
+.sc .sm{font-size:11px;color:var(--muted);margin-top:2px}
 
-    if (data.mode === "pokemon") {
-      var sheet = ss.getSheetByName("pokemon流水");
-      var cost = data.cost || 0;
-      var sell = data.sell || 0;
-      sheet.appendRow([dateStr, data.item, -cost, sell, sell-cost, data.note||"", data.id]);
-    } else {
-      var sheet = ss.getSheetByName("claude流水");
-      sheet.appendRow([dateStr, data.item, data.category, -data.amount, data.note||"", data.id]);
-    }
+.catsec{padding:0 20px;margin-top:12px}
+.catbar{display:flex;border-radius:8px;overflow:hidden;height:9px;gap:2px}
+.catbar div{min-width:4px;transition:flex .5s ease}
+.catleg{display:flex;flex-wrap:wrap;gap:4px 11px;margin-top:8px}
+.catleg span{display:flex;align-items:center;gap:4px;font-size:11px}
+.catdot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
 
-    return ContentService.createTextOutput(JSON.stringify({status:"ok"})).setMimeType(ContentService.MimeType.JSON);
-  } catch (err) {
-    return ContentService.createTextOutput(JSON.stringify({status:"error",message:err.toString()})).setMimeType(ContentService.MimeType.JSON);
-  }
+.rsec{padding:16px 20px 0}
+.rsec .rt{font-size:13px;color:var(--muted);margin-bottom:8px;letter-spacing:.5px}
+.rlist{background:var(--card);border-radius:14px;border:1px solid var(--border);overflow:hidden}
+.row{display:flex;align-items:center;padding:11px 14px;border-bottom:1px solid var(--border);gap:10px;cursor:pointer;transition:background .15s}
+.row:active{background:#ffffff08}
+.row:last-child{border-bottom:none}
+.row .ico{width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.row .inf{flex:1;min-width:0}
+.row .nm{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .mt{font-size:10px;color:var(--muted);margin-top:1px}
+.row .amt{font-size:14px;font-weight:600;flex-shrink:0}
+.row .del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:6px 8px;border-radius:8px;opacity:.4}
+.row .del:active{opacity:1;background:#ef444422}
+.empty{padding:36px 20px;text-align:center;color:var(--muted);font-size:14px;line-height:1.8}
+.poke-row .profit{font-size:14px;font-weight:600}
+
+/* Month group header */
+.month-hdr{padding:14px 14px 6px;font-size:13px;font-weight:600;color:var(--accent);border-bottom:1px solid var(--border);display:flex;justify-content:space-between}
+.month-hdr .msum{font-size:11px;color:var(--muted);font-weight:400}
+
+/* Bottom bar */
+.btm{position:fixed;bottom:0;left:0;right:0;max-width:480px;margin:0 auto;background:linear-gradient(transparent,var(--bg) 20%);padding:36px 16px calc(env(safe-area-inset-bottom,12px) + 12px);z-index:50}
+.stmsg{text-align:center;margin-bottom:8px;font-size:13px;animation:fadeIn .2s ease}
+.irow{display:flex;gap:8px;align-items:center;width:100%}
+.iwrap{flex:1;min-width:0;display:flex;align-items:center;background:var(--card);border-radius:14px;border:1px solid var(--border);padding:0 12px}
+.iwrap input{flex:1;min-width:0;background:none;border:none;outline:none;color:var(--text);font-size:14px;padding:13px 0;font-family:inherit}
+.iwrap input::placeholder{color:var(--muted)}
+.sbtn{background:var(--accent);border:none;color:#fff;border-radius:8px;padding:6px 11px;font-size:13px;cursor:pointer;font-weight:500;flex-shrink:0;display:none}
+.lang-btn{background:var(--card);border:1px solid var(--border);color:var(--muted);border-radius:10px;padding:8px 10px;font-size:12px;cursor:pointer;flex-shrink:0;font-weight:500;min-width:34px;text-align:center}
+.lang-btn:active{border-color:var(--accent);color:var(--accent)}
+.mic{width:48px;height:48px;border-radius:50%;background:var(--card);border:2px solid var(--accent);color:var(--accent);font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s ease}
+.mic.on{background:var(--red);border-color:var(--red);color:#fff;animation:pulse 1.5s ease infinite;box-shadow:0 0 20px #ef444444}
+.mic.poke-mic{border-color:var(--purple);color:var(--purple)}
+.mic.poke-mic.on{background:var(--purple);border-color:var(--purple);color:#fff;box-shadow:0 0 20px #a855f744}
+
+/* Overlays */
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:100;display:none;align-items:flex-end;justify-content:center}
+.ov.show{display:flex}
+.panel{background:var(--card);border-radius:20px 20px 0 0;padding:24px 20px calc(env(safe-area-inset-bottom,12px) + 20px);width:100%;max-width:480px;border:1px solid var(--border);border-bottom:none;max-height:85vh;overflow-y:auto}
+.panel h3{font-size:16px;font-weight:600;margin-bottom:16px}
+.panel label{font-size:13px;color:var(--muted);display:block;margin-bottom:5px;margin-top:12px}
+.panel label:first-of-type{margin-top:0}
+.panel input[type=text],.panel input[type=password],.panel input[type=url],.panel input[type=number],.panel select{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:11px 13px;font-size:14px;font-family:inherit;outline:none;-webkit-appearance:none}
+.panel select{cursor:pointer}
+.panel .hint{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.5}
+.panel .brow{display:flex;gap:10px;margin-top:18px}
+.panel .brow button{flex:1;padding:12px;border-radius:12px;font-size:14px;font-weight:500;cursor:pointer;border:none}
+.bcnl{background:var(--border);color:var(--text)}
+.bsav{background:var(--accent);color:#fff}
+.bdel{background:var(--red);color:#fff}
+
+/* Confirm dialog */
+.confirm-ov{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;display:none;align-items:center;justify-content:center;padding:40px}
+.confirm-ov.show{display:flex}
+.confirm-box{background:var(--card);border-radius:16px;padding:24px;width:100%;max-width:320px;border:1px solid var(--border);text-align:center}
+.confirm-box .cmsg{font-size:15px;margin-bottom:8px;font-weight:500}
+.confirm-box .csub{font-size:13px;color:var(--muted);margin-bottom:20px}
+.confirm-box .brow{display:flex;gap:10px}
+.confirm-box .brow button{flex:1;padding:12px;border-radius:12px;font-size:14px;font-weight:500;cursor:pointer;border:none}
+
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <div><h1>语音记账</h1><div class="sub" id="monthLabel"></div></div>
+  <div class="hdr-btns">
+    <button onclick="openSettings()">⚙️</button>
+    <button onclick="toggleView()" id="viewBtn">📋 全部</button>
+    <button class="dng" onclick="confirmClearAll()" id="clearBtn" style="display:none">🗑</button>
+  </div>
+</div>
+
+<div class="mode-tabs">
+  <div class="mode-tab on" onclick="switchMode('daily')">🏠 日常记账</div>
+  <div class="mode-tab poke" onclick="switchMode('pokemon')">🎴 卡牌交易</div>
+</div>
+
+<div id="homeView">
+  <div id="dailyStats">
+    <div class="stats">
+      <div class="sc"><div class="lb">支出</div><div class="vl mono" id="sExp" style="color:var(--red)">¥0</div><div class="sm" id="sExpN">0 笔</div></div>
+      <div class="sc"><div class="lb">收入</div><div class="vl mono" id="sInc" style="color:var(--green)">¥0</div><div class="sm" id="sIncN">0 笔</div></div>
+      <div class="sc"><div class="lb">结余</div><div class="vl mono" id="sBal">¥0</div></div>
+    </div>
+    <div class="catsec" id="catSec" style="display:none"><div class="catbar" id="catBar"></div><div class="catleg" id="catLeg"></div></div>
+  </div>
+  <div id="pokeStats" style="display:none">
+    <div class="stats">
+      <div class="sc"><div class="lb">总投入</div><div class="vl mono" id="pCost" style="color:var(--red)">¥0</div><div class="sm" id="pCostN">0 笔</div></div>
+      <div class="sc"><div class="lb">总收入</div><div class="vl mono" id="pSell" style="color:var(--green)">¥0</div></div>
+      <div class="sc"><div class="lb">利润</div><div class="vl mono" id="pProfit">¥0</div></div>
+    </div>
+  </div>
+  <div class="rsec"><div class="rt" id="recentTitle">最近记录</div><div class="rlist" id="recentList"><div class="empty">按下 🎙 麦克风按钮<br>说出你的消费或收入</div></div></div>
+</div>
+
+<div id="historyView" style="display:none">
+  <div class="rsec"><div class="rt" id="histTitle">全部记录</div><div id="histList"></div></div>
+</div>
+
+<!-- Bottom Bar -->
+<div class="btm">
+  <div class="stmsg" id="stMsg" style="display:none"></div>
+  <div class="irow">
+    <button class="lang-btn" id="langBtn" onclick="cycleLang()">中</button>
+    <div class="iwrap">
+      <input type="text" id="txtIn" placeholder="买了200日元的苹果" enterkeyhint="send">
+      <button class="sbtn" id="sendBtn" onclick="submitText()">记</button>
+    </div>
+    <button class="mic" id="micBtn" onclick="toggleMic()">🎙</button>
+  </div>
+</div>
+
+<!-- Settings -->
+<div class="ov" id="setOv" onclick="if(event.target===this)closeSet()">
+  <div class="panel">
+    <h3>⚙️ 设置</h3>
+    <label>Google Sheets Webhook URL</label>
+    <input type="url" id="inWebhook" placeholder="https://script.google.com/macros/s/.../exec">
+    <div class="hint">每记一笔自动同步到 Google Sheet</div>
+    <label>Anthropic API Key（可选）</label>
+    <input type="password" id="inApiKey" placeholder="sk-ant-...">
+    <div class="hint">填写后启用 AI 智能分类，不填则用关键词分类（离线可用）</div>
+    <div class="brow"><button class="bcnl" onclick="closeSet()">取消</button><button class="bsav" onclick="saveSet()">保存</button></div>
+  </div>
+</div>
+
+<!-- Edit Overlay -->
+<div class="ov" id="editOv" onclick="if(event.target===this)closeEdit()">
+  <div class="panel">
+    <h3 id="editTitle">编辑记录</h3>
+    <div id="editDaily">
+      <label>项目</label><input type="text" id="edItem">
+      <label>金额 (日元)</label><input type="number" id="edAmount" inputmode="numeric">
+      <label>分类</label>
+      <select id="edCat"></select>
+      <label>类型</label>
+      <select id="edType"><option value="expense">支出</option><option value="income">收入</option></select>
+      <label>备注</label><input type="text" id="edNote" placeholder="可选">
+    </div>
+    <div id="editPoke" style="display:none">
+      <label>商品</label><input type="text" id="edPItem">
+      <label>买入成本 (日元)</label><input type="number" id="edPCost" inputmode="numeric">
+      <label>卖出价格 (日元)</label><input type="number" id="edPSell" inputmode="numeric">
+      <label>备注</label><input type="text" id="edPNote" placeholder="可选">
+    </div>
+    <div class="brow">
+      <button class="bdel" onclick="confirmDeleteFromEdit()">删除</button>
+      <button class="bcnl" onclick="closeEdit()">取消</button>
+      <button class="bsav" onclick="saveEdit()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm Dialog -->
+<div class="confirm-ov" id="confirmOv">
+  <div class="confirm-box">
+    <div class="cmsg" id="confirmMsg">确认删除？</div>
+    <div class="csub" id="confirmSub">删除后 Google Sheet 中的对应记录也会被删除</div>
+    <div class="brow">
+      <button class="bcnl" onclick="closeConfirm()">取消</button>
+      <button class="bdel" id="confirmBtn" onclick="">确认删除</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const RK='vb_records',PK='vb_poke_records',SK='vb_settings';
+const DEFAULT_WEBHOOK='https://script.google.com/macros/s/AKfycbwjSJfGQqJOjXXHKdtpGILq97t5ZcIVPuhS6lQMC0gTiY2316czxZHUQnCgaa0RVp_P/exec';
+const CATS={
+  '食品':{e:'🍎',c:'#4ade80'},'外食':{e:'🍽️',c:'#f97316'},'交通':{e:'🚃',c:'#3b82f6'},
+  '住居':{e:'🏠',c:'#8b5cf6'},'衣服':{e:'👕',c:'#ec4899'},'通信':{e:'📱',c:'#06b6d4'},
+  '娯楽':{e:'🎮',c:'#eab308'},'医療':{e:'💊',c:'#ef4444'},'教育':{e:'📚',c:'#14b8a6'},
+  '仕事':{e:'💼',c:'#6366f1'},'趣味':{e:'🎴',c:'#d946ef'},'日用':{e:'🧴',c:'#78716c'},
+  '収入':{e:'💰',c:'#22c55e'},'その他':{e:'📦',c:'#94a3b8'},
+};
+const KW={
+  '食品':['苹果','香蕉','牛奶','鸡蛋','面包','蔬菜','水果','肉','鱼','米','超市','便利店','コンビニ','スーパー','菜','食材','零食','饮料','水','茶','咖啡','酸奶','鸡肉','猪肉','牛肉','りんご','パン','卵','野菜'],
+  '外食':['拉面','寿司','午饭','晚饭','早饭','午餐','晚餐','早餐','饭店','餐厅','食堂','外卖','麦当劳','吉野家','松屋','ラーメン','ランチ','ディナー','弁当','便当','奶茶','火锅','烧烤','饺子','吃饭','カフェ','居酒屋','マック'],
+  '交通':['电车','地铁','公交','巴士','出租车','タクシー','バス','電車','Suica','PASMO','交通','车费','打车','新干线','飞机','ガソリン','停车'],
+  '住居':['房租','水费','电费','煤气','ガス','電気','水道','家賃','网费','管理费','修理','家具'],
+  '衣服':['衣服','鞋','裤子','裙子','外套','帽子','服','靴','シャツ','ズボン','ジャケット','コート','ユニクロ','GU'],
+  '通信':['手机','话费','流量','WiFi','SIM','携帯','スマホ','通信'],
+  '娯楽':['电影','游戏','KTV','カラオケ','映画','ゲーム','Netflix','Spotify','旅游','旅行','门票'],
+  '医療':['医院','药','看病','病院','薬','歯医者','牙医','体检','クリニック'],
+  '教育':['书','本','教材','课程','学费','考试','試験','文具','笔','ノート','培训'],
+  '趣味':['手办','フィギュア','漫画','模型','收藏','乐器','ギター'],
+  '日用':['洗发水','牙膏','纸巾','洗衣液','シャンプー','ティッシュ','洗剤','百均','ダイソー','日用品'],
+  '収入':['工资','薪水','给料','報酬','赚','收入','入金','バイト','打工','アルバイト','副業','奖金','ボーナス','退款','返金','民泊'],
+};
+const LANGS=[{code:'zh-CN',label:'中',name:'中文'},{code:'ja',label:'日',name:'日本語'},{code:'en-US',label:'En',name:'English'}];
+
+let dailyRecs=[],pokeRecs=[];
+let settings={webhook:DEFAULT_WEBHOOK,apiKey:'',langIdx:0};
+let mode='daily',curView='home',listening=false,recog=null,editingRec=null;
+
+function load(){
+  try{dailyRecs=JSON.parse(localStorage.getItem(RK)||'[]')}catch{dailyRecs=[]}
+  try{pokeRecs=JSON.parse(localStorage.getItem(PK)||'[]')}catch{pokeRecs=[]}
+  try{const s=JSON.parse(localStorage.getItem(SK)||'{}');settings={webhook:s.webhook||DEFAULT_WEBHOOK,apiKey:s.apiKey||'',langIdx:s.langIdx||0}}catch{}
 }
+function save(){localStorage.setItem(RK,JSON.stringify(dailyRecs));localStorage.setItem(PK,JSON.stringify(pokeRecs));localStorage.setItem(SK,JSON.stringify(settings))}
+
+// ═══ Mode ═══
+function switchMode(m){
+  mode=m;
+  document.querySelectorAll('.mode-tab').forEach((t,i)=>{t.classList.toggle('on',i===(m==='daily'?0:1))});
+  document.getElementById('dailyStats').style.display=m==='daily'?'':'none';
+  document.getElementById('pokeStats').style.display=m==='pokemon'?'':'none';
+  document.getElementById('micBtn').classList.toggle('poke-mic',m==='pokemon');
+  document.getElementById('txtIn').placeholder=m==='daily'?'买了200日元的苹果':'皮卡丘卡 买5000 卖8000';
+  if(curView==='hist'){curView='home';document.getElementById('homeView').style.display='';document.getElementById('historyView').style.display='none';document.getElementById('viewBtn').textContent='📋 全部'}
+  render();
+}
+function cycleLang(){settings.langIdx=(settings.langIdx+1)%LANGS.length;save();updateLangBtn();showSt('ok','语音: '+LANGS[settings.langIdx].name)}
+function updateLangBtn(){document.getElementById('langBtn').textContent=LANGS[settings.langIdx].label}
+
+// ═══ Classifiers ═══
+function kwClassify(input){
+  const lo=input.toLowerCase();let type='expense';
+  for(const w of KW['収入'])if(lo.includes(w.toLowerCase())){type='income';break}
+  let cat=type==='income'?'収入':'その他';
+  if(type!=='income'){outer:for(const[c,ws] of Object.entries(KW)){if(c==='収入')continue;for(const w of ws)if(lo.includes(w.toLowerCase())){cat=c;break outer}}}
+  let amt=0;const ps=[/(\d[\d,]*\.?\d*)\s*(?:日元|日圆|円|yen)/i,/[¥￥]\s*(\d[\d,]*\.?\d*)/,/(\d[\d,]*\.?\d*)\s*(?:元|块|刀)/,/(?:花了|花|付了|付|收入|赚了|赚|卖了|入金|收到)\s*(\d[\d,]*\.?\d*)/,/(\d[\d,]*\.?\d*)/];
+  for(const p of ps){const m=lo.replace(/,/g,'').match(p);if(m){amt=parseFloat(m[1]);break}}
+  let item=input.replace(/\d[\d,]*\.?\d*\s*(?:日元|日圆|円|yen|元|块|刀)/gi,'').replace(/[¥￥]\s*\d[\d,]*\.?\d*/g,'').replace(/(?:我|今天|昨天|刚才|刚|花了|花|付了|付|买了|买|卖了|卖|赚了|赚|收入|入金|收到|的|了|个|一|两|三)/g,'').trim()||input;
+  if(!amt)return null;return{type,item,amount:amt,category:cat,note:''};
+}
+function pokeKwClassify(input){
+  const lo=input.toLowerCase();let cost=0,sell=0;
+  const buyM=lo.match(/(?:买|買|入|成本|花|进价|仕入|cost)\s*[了]?\s*(\d[\d,]*\.?\d*)/i);
+  const sellM=lo.match(/(?:卖|売|出|售价|卖了|售出|売値|sell)\s*[了]?\s*(\d[\d,]*\.?\d*)/i);
+  if(buyM)cost=parseFloat(buyM[1].replace(/,/g,''));if(sellM)sell=parseFloat(sellM[1].replace(/,/g,''));
+  const nums=[];const numRe=/(\d[\d,]*\.?\d*)/g;let nm;while((nm=numRe.exec(lo))!==null)nums.push(parseFloat(nm[1].replace(/,/g,'')));
+  if(!cost&&!sell&&nums.length>=2){cost=nums[0];sell=nums[1]}
+  if(!cost&&!sell&&nums.length===1){if(/卖|売|出|售/.test(lo))sell=nums[0];else cost=nums[0]}
+  let item=input.replace(/\d[\d,]*\.?\d*\s*(?:日元|円|yen|元)?/gi,'').replace(/(?:我|今天|昨天|买了|买|卖了|卖|赚了|花了|花|成本|售价|进价|出|入|的|了)/g,'').trim()||input;
+  if(!cost&&!sell)return null;return{item,cost,sell,note:''};
+}
+async function aiClassify(input){
+  if(!settings.apiKey)return null;
+  try{
+    const prompt=mode==='pokemon'?`你是卡牌交易记账助手。解析这句话，返回严格JSON：\n{"item":"商品名","cost":买入成本数字,"sell":卖出价格数字,"note":""}\n只买没卖sell=0,只卖没买cost=0。金额默认日元。无法解析→{"error":"无法识别"}\n用户说：${input}`:`你是记账助手。解析这句话，返回严格JSON：\n{"type":"expense"或"income","item":"名称","amount":数字,"category":"从[食品,外食,交通,住居,衣服,通信,娯楽,医療,教育,仕事,趣味,日用,収入,その他]选","note":""}\n金额默认日元。卖东西/工资→income+収入。无法解析→{"error":"无法识别"}\n用户说：${input}`;
+    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':settings.apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:300,messages:[{role:'user',content:prompt}]})});
+    const d=await r.json();if(d.error)return null;const t=(d.content||[]).map(i=>i.text||'').join('');return JSON.parse(t.replace(/```json|```/g,'').trim());
+  }catch{return null}
+}
+async function classify(input){if(settings.apiKey){const r=await aiClassify(input);if(r&&!r.error)return r}return mode==='pokemon'?pokeKwClassify(input):kwClassify(input)}
+
+// ═══ Sync ═══
+async function syncAction(action,record,recordMode){
+  const url=settings.webhook;if(!url)return;
+  try{
+    const body=recordMode==='pokemon'
+      ?{action,mode:'pokemon',id:record.id,item:record.item,cost:record.cost,sell:record.sell,note:record.note||'',timestamp:record.timestamp}
+      :{action,mode:'daily',id:record.id,item:record.item,category:record.category,amount:record.amount,type:record.type,note:record.note||'',timestamp:record.timestamp};
+    await fetch(url,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain'},body:JSON.stringify(body)});
+    if(action==='add'){record.synced=true;save()}
+  }catch(e){console.error('Sync error:',e)}
+}
+
+// ═══ Process ═══
+async function processInput(input){
+  if(!input.trim())return;showSt('proc',settings.apiKey?'AI 正在解析...':'正在解析...');
+  const res=await classify(input);if(!res||res.error){showSt('err',res?.error||'无法识别，请再试一次');return}
+  if(mode==='pokemon'){
+    const rec={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),...res,raw:input,timestamp:Date.now(),synced:false};
+    pokeRecs.unshift(rec);save();render();const profit=rec.sell-rec.cost;
+    showSt('ok',`${rec.item} | 入¥${rec.cost.toLocaleString()} 出¥${rec.sell.toLocaleString()} ${profit>=0?'赚':'亏'}¥${Math.abs(profit).toLocaleString()}`);
+    syncAction('add',rec,'pokemon');
+  }else{
+    const rec={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),...res,raw:input,timestamp:Date.now(),synced:false};
+    dailyRecs.unshift(rec);save();render();showSt('ok',`${res.type==='income'?'收入':'支出'}: ${res.item} ¥${res.amount.toLocaleString()}`);
+    syncAction('add',rec,'daily');
+  }
+  document.getElementById('txtIn').value='';updateSendBtn();
+}
+function submitText(){const v=document.getElementById('txtIn').value;if(v.trim())processInput(v)}
+
+// ═══ Edit ═══
+function openEdit(id){
+  let rec=dailyRecs.find(r=>r.id===id);let rMode='daily';
+  if(!rec){rec=pokeRecs.find(r=>r.id===id);rMode='pokemon'}
+  if(!rec)return;editingRec={...rec,_mode:rMode};
+  if(rMode==='daily'){
+    document.getElementById('editDaily').style.display='';document.getElementById('editPoke').style.display='none';
+    document.getElementById('edItem').value=rec.item;document.getElementById('edAmount').value=rec.amount;
+    const sel=document.getElementById('edCat');sel.innerHTML=Object.keys(CATS).map(c=>`<option value="${c}"${c===rec.category?' selected':''}>${CATS[c].e} ${c}</option>`).join('');
+    document.getElementById('edType').value=rec.type;document.getElementById('edNote').value=rec.note||'';
+  }else{
+    document.getElementById('editDaily').style.display='none';document.getElementById('editPoke').style.display='';
+    document.getElementById('edPItem').value=rec.item;document.getElementById('edPCost').value=rec.cost;
+    document.getElementById('edPSell').value=rec.sell;document.getElementById('edPNote').value=rec.note||'';
+  }
+  document.getElementById('editOv').classList.add('show');
+}
+function closeEdit(){document.getElementById('editOv').classList.remove('show');editingRec=null}
+function saveEdit(){
+  if(!editingRec)return;const id=editingRec.id,m=editingRec._mode;
+  if(m==='daily'){
+    const rec=dailyRecs.find(r=>r.id===id);if(!rec)return;
+    rec.item=document.getElementById('edItem').value.trim()||rec.item;
+    rec.amount=parseFloat(document.getElementById('edAmount').value)||rec.amount;
+    rec.category=document.getElementById('edCat').value;rec.type=document.getElementById('edType').value;
+    rec.note=document.getElementById('edNote').value.trim();
+    save();render();syncAction('edit',rec,'daily');
+  }else{
+    const rec=pokeRecs.find(r=>r.id===id);if(!rec)return;
+    rec.item=document.getElementById('edPItem').value.trim()||rec.item;
+    rec.cost=parseFloat(document.getElementById('edPCost').value)||0;
+    rec.sell=parseFloat(document.getElementById('edPSell').value)||0;
+    rec.note=document.getElementById('edPNote').value.trim();
+    save();render();syncAction('edit',rec,'pokemon');
+  }
+  closeEdit();showSt('ok','已保存修改');if(curView==='hist')renderHist();
+}
+
+// ═══ Delete ═══
+function confirmDeleteFromEdit(){
+  if(!editingRec)return;
+  showConfirm('确认删除这条记录？','删除后 Google Sheet 中的对应记录也会被删除',()=>{
+    delRec(editingRec.id);closeEdit();
+  });
+}
+function confirmDeleteRow(id){
+  showConfirm('确认删除这条记录？','删除后 Google Sheet 中的对应记录也会被删除',()=>delRec(id));
+}
+function delRec(id){
+  let rec=dailyRecs.find(r=>r.id===id);let rMode='daily';
+  if(!rec){rec=pokeRecs.find(r=>r.id===id);rMode='pokemon'}
+  if(rec)syncAction('delete',rec,rMode);
+  dailyRecs=dailyRecs.filter(r=>r.id!==id);pokeRecs=pokeRecs.filter(r=>r.id!==id);
+  save();render();if(curView==='hist')renderHist();showSt('ok','已删除');
+}
+function confirmClearAll(){
+  showConfirm('清除所有本地记录？','Google Sheet 中的数据不会被删除',()=>{
+    if(mode==='daily')dailyRecs=[];else pokeRecs=[];save();render();
+  });
+}
+
+// ═══ Confirm Dialog ═══
+let confirmCb=null;
+function showConfirm(msg,sub,cb){
+  document.getElementById('confirmMsg').textContent=msg;document.getElementById('confirmSub').textContent=sub;
+  confirmCb=cb;document.getElementById('confirmOv').classList.add('show');
+  document.getElementById('confirmBtn').onclick=()=>{closeConfirm();if(confirmCb)confirmCb()};
+}
+function closeConfirm(){document.getElementById('confirmOv').classList.remove('show');confirmCb=null}
+
+// ═══ Speech ═══
+function toggleMic(){
+  if(listening){recog?.stop();listening=false;updateMic();return}
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){showSt('err','浏览器不支持语音，请用文字输入');return}
+  recog=new SR();recog.lang=LANGS[settings.langIdx].code;recog.interimResults=true;recog.continuous=false;
+  recog.onstart=()=>{listening=true;updateMic();showSt('listen','正在聆听... ('+LANGS[settings.langIdx].name+')')};
+  recog.onresult=(e)=>{const t=Array.from(e.results).map(r=>r[0].transcript).join('');showSt('listen',`"${t}"`);if(e.results[0].isFinal){listening=false;updateMic();processInput(t)}};
+  recog.onerror=(e)=>{listening=false;updateMic();if(e.error!=='aborted')showSt('err','语音出错: '+e.error)};
+  recog.onend=()=>{listening=false;updateMic()};recog.start();
+}
+function updateMic(){document.getElementById('micBtn').className='mic'+(mode==='pokemon'?' poke-mic':'')+(listening?' on':'')}
+
+let stTimer=null;
+function showSt(type,msg){const el=document.getElementById('stMsg');el.style.display='block';el.style.color=type==='err'?'var(--red)':type==='ok'?'var(--green)':'var(--muted)';el.textContent=msg;clearTimeout(stTimer);if(type!=='listen')stTimer=setTimeout(()=>el.style.display='none',3000)}
+
+// ═══ Render ═══
+function fmtD(ts){const d=new Date(ts);return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`}
+function fmtY(n){return `¥${Math.abs(n).toLocaleString()}`}
+function catE(c){return CATS[c]?.e||'📦'}
+function catC(c){return CATS[c]?.c||'#94a3b8'}
+
+function makeDailyRow(r){
+  const isInc=r.type==='income';
+  return `<div class="row" onclick="openEdit('${r.id}')"><div class="ico" style="background:${catC(r.category)}18">${catE(r.category)}</div><div class="inf"><div class="nm">${r.item}</div><div class="mt">${fmtD(r.timestamp)} · ${catE(r.category)} ${r.category}</div></div><div class="amt mono" style="color:${isInc?'var(--green)':'var(--text)'}">${isInc?'+':'-'}${fmtY(r.amount)}</div><button class="del" onclick="event.stopPropagation();confirmDeleteRow('${r.id}')" title="删除">🗑</button></div>`;
+}
+function makePokeRow(r){
+  const profit=r.sell-r.cost;
+  return `<div class="row poke-row" onclick="openEdit('${r.id}')"><div class="ico" style="background:#a855f718">🎴</div><div class="inf"><div class="nm">${r.item}</div><div class="mt">${fmtD(r.timestamp)}${r.cost?' · 入'+fmtY(r.cost):''}${r.sell?' · 出'+fmtY(r.sell):''}</div></div><div class="profit mono" style="color:${profit>=0?'var(--green)':'var(--red)'}"> ${profit>=0?'+':'-'}${fmtY(Math.abs(profit))}</div><button class="del" onclick="event.stopPropagation();confirmDeleteRow('${r.id}')" title="删除">🗑</button></div>`;
+}
+
+function render(){
+  const now=new Date();document.getElementById('monthLabel').textContent=`${now.getFullYear()}年${now.getMonth()+1}月`;
+  const ms=new Date(now.getFullYear(),now.getMonth(),1).getTime();
+  if(mode==='daily'){
+    const mo=dailyRecs.filter(r=>r.timestamp>=ms);const exp=mo.filter(r=>r.type==='expense'),inc=mo.filter(r=>r.type==='income');
+    const tExp=exp.reduce((s,r)=>s+r.amount,0),tInc=inc.reduce((s,r)=>s+r.amount,0),bal=tInc-tExp;
+    document.getElementById('sExp').textContent=fmtY(tExp);document.getElementById('sExpN').textContent=`${exp.length} 笔`;
+    document.getElementById('sInc').textContent=fmtY(tInc);document.getElementById('sIncN').textContent=`${inc.length} 笔`;
+    document.getElementById('sBal').textContent=(bal>=0?'':'-')+fmtY(Math.abs(bal));document.getElementById('sBal').style.color=bal>=0?'var(--green)':'var(--red)';
+    const cats={};exp.forEach(r=>{cats[r.category]=(cats[r.category]||0)+r.amount});const cs=document.getElementById('catSec');
+    if(tExp>0){cs.style.display='';const sorted=Object.entries(cats).sort((a,b)=>b[1]-a[1]);
+      document.getElementById('catBar').innerHTML=sorted.map(([c,a])=>`<div style="flex:${a/tExp};background:${catC(c)}"></div>`).join('');
+      document.getElementById('catLeg').innerHTML=sorted.map(([c,a])=>`<span><span class="catdot" style="background:${catC(c)}"></span><span style="color:var(--muted)">${catE(c)} ${c}</span> <span class="mono">${fmtY(a)}</span></span>`).join('');
+    }else cs.style.display='none';
+    document.getElementById('recentList').innerHTML=dailyRecs.length?dailyRecs.slice(0,10).map(makeDailyRow).join(''):'<div class="empty">按下 🎙 说出消费或收入<br>例: "午饭拉面900日元"</div>';
+  }else{
+    const mo=pokeRecs.filter(r=>r.timestamp>=ms);const tCost=mo.reduce((s,r)=>s+r.cost,0),tSell=mo.reduce((s,r)=>s+r.sell,0),profit=tSell-tCost;
+    document.getElementById('pCost').textContent=fmtY(tCost);document.getElementById('pCostN').textContent=`${mo.length} 笔`;document.getElementById('pSell').textContent=fmtY(tSell);
+    document.getElementById('pProfit').textContent=(profit>=0?'+':'-')+fmtY(Math.abs(profit));document.getElementById('pProfit').style.color=profit>=0?'var(--green)':'var(--red)';
+    document.getElementById('recentList').innerHTML=pokeRecs.length?pokeRecs.slice(0,10).map(makePokeRow).join(''):'<div class="empty">按下 🎙 说出交易记录<br>例: "皮卡丘卡 买5000 卖8000"</div>';
+  }
+  document.getElementById('clearBtn').style.display=(mode==='daily'?dailyRecs:pokeRecs).length?'':'none';
+}
+
+function renderHist(){
+  const recs=mode==='daily'?[...dailyRecs]:[...pokeRecs];
+  const fn=mode==='daily'?makeDailyRow:makePokeRow;
+  document.getElementById('histTitle').textContent=`全部记录 (${recs.length})`;
+  const container=document.getElementById('histList');
+  if(!recs.length){container.innerHTML='<div class="rlist"><div class="empty">暂无记录</div></div>';return}
+  // Group by month
+  const groups={};
+  recs.forEach(r=>{const d=new Date(r.timestamp);const key=`${d.getFullYear()}年${d.getMonth()+1}月`;if(!groups[key])groups[key]=[];groups[key].push(r)});
+  let html='';
+  Object.entries(groups).forEach(([month,items])=>{
+    let sumText='';
+    if(mode==='daily'){
+      const exp=items.filter(r=>r.type==='expense').reduce((s,r)=>s+r.amount,0);
+      const inc=items.filter(r=>r.type==='income').reduce((s,r)=>s+r.amount,0);
+      sumText=`支出 ${fmtY(exp)} · 收入 ${fmtY(inc)}`;
+    }else{
+      const cost=items.reduce((s,r)=>s+r.cost,0),sell=items.reduce((s,r)=>s+r.sell,0);
+      sumText=`投入 ${fmtY(cost)} · 收入 ${fmtY(sell)} · 利润 ${fmtY(Math.abs(sell-cost))}`;
+    }
+    html+=`<div class="rlist" style="margin-bottom:12px"><div class="month-hdr"><span>${month}</span><span class="msum">${sumText}</span></div>${items.map(fn).join('')}</div>`;
+  });
+  container.innerHTML=html;
+}
+
+function toggleView(){
+  curView=curView==='home'?'hist':'home';
+  document.getElementById('homeView').style.display=curView==='home'?'':'none';
+  document.getElementById('historyView').style.display=curView==='hist'?'':'none';
+  document.getElementById('viewBtn').textContent=curView==='home'?'📋 全部':'← 返回';
+  if(curView==='hist')renderHist();
+}
+
+// ═══ Settings ═══
+function openSettings(){document.getElementById('inWebhook').value=settings.webhook;document.getElementById('inApiKey').value=settings.apiKey;document.getElementById('setOv').classList.add('show')}
+function closeSet(){document.getElementById('setOv').classList.remove('show')}
+function saveSet(){settings.webhook=document.getElementById('inWebhook').value.trim()||DEFAULT_WEBHOOK;settings.apiKey=document.getElementById('inApiKey').value.trim();save();closeSet();showSt('ok','设置已保存')}
+function updateSendBtn(){document.getElementById('sendBtn').style.display=document.getElementById('txtIn').value.trim()?'block':'none'}
+
+load();render();updateLangBtn();
+document.getElementById('txtIn').addEventListener('input',updateSendBtn);
+document.getElementById('txtIn').addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.value.trim()){e.preventDefault();submitText()}});
+</script>
+</body>
+</html>
