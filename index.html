@@ -390,8 +390,11 @@ let confirmCb=null;
 function showConfirm(msg,sub,cb){
   document.getElementById('confirmMsg').textContent=msg;document.getElementById('confirmSub').textContent=sub;
   confirmCb=cb;document.getElementById('confirmOv').classList.add('show');
-  document.getElementById('confirmBtn').onclick=()=>{closeConfirm();if(confirmCb)confirmCb()};
-}
+  document.getElementById('confirmBtn').onclick=()=>{
+  const cb=confirmCb;
+  closeConfirm();
+  if(cb)cb();
+};
 function closeConfirm(){document.getElementById('confirmOv').classList.remove('show');confirmCb=null}
 
 // ═══ Speech ═══
